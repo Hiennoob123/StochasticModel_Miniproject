@@ -16,108 +16,359 @@
 \usepackage{amssymb}
 \usepackage[export]{adjustbox}
 \usepackage{enumitem}
-\begin{document}
+\usepackage{derivative}
+\usepackage{amsmath, amssymb}
+\usepackage{titlesec}
 
-\title{Dynamic Staffing Control for a Triage-Based Service System}
+\begin{document}
+\titleformat*{\section}{\LARGE\bfseries}
+\titleformat*{\subsection}{\Large\bfseries}
+\titleformat*{\subsubsection}{\large\bfseries}
+\setlength{\parindent}{0pt}
+\title{Emergency Department Staffing Optimization}
 \author{}
 \date{}
 \maketitle
+\section*{Problem Overview}
+We aim to optimize staffing levels in an Emergency Department (ED) to ensure timely patient care while balancing cost and resource utilization. The ED is modeled as a queuing system with stochastic arrivals and service times.
 
-\section*{Real-Life Problem}
-In 2050, humans develop a new autonomous technology capable of treating patients with any illness.
-However, it is costly to activate and maintain these unit,
-and only 1 new unit can be activated each hour.
-The Emergency Department is trying to decide the use of active unit to adapt to the current situation.
-The objective here is finding the optimal policy to minimizing the cost while serving patients.
+\section*{System Components}
 
-\section*{Model Overview}
-\subsection*{Description and Explaination}
-We consider a service system (e.g., an Emergency Department) with Poisson
-arrivals of rate $\mu$. Each arrival is assigned a triage level
-$i\in\{1,2,3\}$ with probabilities
+\subsection*{Patient Arrival Process}
+Arrivals follow a non-homogeneous Poisson process with rate $\lambda(t)$ that varies by time of day (morning, afternoon, night).
+
+\subsection*{Triage Levels}
+Each patient is assigned a triage category with a fixed probability:
 \[
-p_1 = 0.1,\qquad p_2 = 0.3,\qquad p_3 = 0.6,
+P(\text{Level } i) = p_i.
 \]
-corresponding to Critical, Urgent, and Non-urgent.
 
-The queue can hold at most
-$M$ patients; arrivals have to leave if it exceeds the queue capacity. 
+We consider two levels (Urgent, Non-urgent) :
+\[
+p_2 = 0.40,\quad p_3 = 0.60.
+\]
 
-Each level-$i$ patient has an exponential service time with rate $\lambda_i$. Calling each unit a staff,
-if a staff becomes free, it immediately treats the highest-acuity waiting patient.
 
-Let $S_t$ denote the number of active staff at time $t$.
 
-For each hour interval t, we have:
+\subsection*{Service Times}
+Service time for a triage level $i$ is assumed exponential with rate $\mu_i$:
+\[
+S_i \sim \text{Exp}(\mu_i), \qquad \mathbb{E}[S_i] = \frac{1}{\mu_i}.
+\]
+
+Example service rates (Critical, Urgent, Non-urgent):
+\[
+ \mu_2=4,\; \mu_3=6.
+\]
+
+Higher acuity = shorter mean service time but stricter wait limits.
+
+\section*{Staffing Policies}
 \begin{itemize}
-    \item Services time for each patient follows exponential distribution \\ $\Rightarrow$
-    we only need to consider the number of currently served patient for each triage level (Memoryless).
-    \item Interarrival time follows exponential distribution
-    with rate $\mu$
+    \item \textbf{Static Staffing:} Fixed number of staff for the whole horizon.
+    \item \textbf{Dynamic Staffing:} Staff levels change by shift to match $\lambda(t)$.
+    \item \textbf{Threshold-Based:} Add or remove staff when queue length or waiting time exceeds a threshold.
 \end{itemize}
 
-Therefore, we only need to consider the number of patients in each triage in queue and service,
-and then simulate the system.
+\section*{Performance Metrics}
 
-\section*{Optimization}
-In order to derive the optimal policy for this model, we use a simulation-based Reinforcement
-learning. Here, we will describe the model, ultilizing the simulation above.
-
-\subsection*{Dynamic Staffing Decisions}
-
-Let $S_t$ denote the number of active staff at time t. Then, the controller chooses an action
+\subsection*{Average Waiting Time}
 \[
-a_t \in \{-S_t, \dots,-1,0,+1\},
+\bar{W} = \frac{1}{N}\sum_{j=1}^N W_j,
 \]
-representing a request to decrease or increase staff. Staffing is bounded:
+with violations tracked when $W_j > W^{\max}_{\text{triage}(j)}$.
+
+\subsection*{Staffing Cost}
+If $N(t)$ staff are scheduled with cost rate $c_s$:
 \[
-0 \le S_t \le S_{\max}.
-\]
-Increases take effect immediately. Decreases will only be effective when staff finish
-service; if no staff become free, staffing remains unchanged. The next staffing
-level is
-\[
-S_{t+1} = \min\{S_{\max},\, \max\{0,\, S_t + a^{\text{effective}}_t\}\}.
+C = c_s \int_0^T N(t)\, dt.
 \]
 
-\subsection*{Reward Structure}
-Let $C_{i, t}$ denote the number of level-i patients complete treatment during t.\\
-During interval $t$, we have:
+\subsection*{Utility Function}
+A combined objective:
+\[
+U = - w_1 \bar{W}  - w_3 C.
+\]
+
+\section*{Simulation and Optimization}
+A discrete-event simulation evaluates each policy by reproducing arrivals, queuing, and service. We compare policies via utility $U$ and optionally apply:
 \begin{itemize}
-    \item Complete treatment for a level-i patient yields reward $r_1 > r_2 > r_3 > 0$.
-    \item Maintain $S_t$ staff cost $c_m S_t$.
-    \item Activate new staff cost $c_a$.
-    \item Block $P_t$ patient receive $c_p P_{\text{ovf}, t}$ penalty.
+    \item Static approach : Apply the same number of staff for every state.
+    \item Greedy approach: Apply the number of staff based on the number of patients left in the queue.
+    \item Reinforcement Learning approach: Apply MDP algorithm for the problem, using simulation to get rewards.
+    % \item Black-box optimization (GA, SA, Nelder--Mead),
+    % \item Surrogate modeling for faster approximation.
 \end{itemize}
-Then, the reward will be:
-\[R_t = - c_m S_t - c_a\mathbf{1}_\text{new activation}- c_p P_{\text{ovf}, t} + \sum_{i=1}^{3} r_iC_{i, t}\]
-We will calculate this using the simulation above.
 
-\subsection*{MDP Formulation}
+The goal is to identify staffing rules that maximize $U$ and keep waiting times within triage limits.
 
-Because arrivals are Poisson and service times are exponential, the system is
-Markov once we track, for each triage level $i\in\{1,2,3\}$:
+\subsection*{Initial simulation environment}
+For training, computing and comparing every approaches, we use the following parameters:
+\begin{align*}
+    \text{Queue Capacity: } M &= 20\\
+    \text{Maximum Staff: } S &= 10\\
+    \text{Arrival rate: } \mu &= 10\\
+    \text{Service rate: } \lambda_2 &= 4.0\\
+    \lambda_3 &= 6.0\\
+    \text{Reward for urgent } r_2 &= 50\\
+    \text{Reward for non-urgent } r_3 &= 20\\
+    \text{Reward for Maintenance } c_m &= 10\\
+    \text{Reward for ca } c_a &= 50\\
+    \text{Penalty for blocking } c_p &= 100\\
+\end{align*}
+This is just the initial parameter. We will change them later for analyze specific properties of each approaches.
 
+\subsection*{Static Approach}
+We keep the same number of staffs for every states of the problem.
+\subsubsection*{Optimal solution}
+By running simulation for different number of staffs, the optimal number
+of staffs for the above environment is 3. This also align with the theoretical optimal
+value.
+\subsubsection*{Theoretical Optimal}
+\textbf{Important properties}
+
+Given n i.d.p random variable $X_1, X_2, \dots, X_n \text{ where } X_i \sim Exp(\lambda_i)$, we have:
+\[\min(X_1, \dots, X_n) \sim Exp(\sum_{i=1}^{n}\lambda_i) \quad \text{(Proven in class)}\]
+
+Therefore, in a system consist of n busy servers with service rate of $\lambda$, the transition rate to completeing 1 task is $n\lambda$.\\
+
+\textbf{General Double-Class system}
+
+Let the number of staff in this policy is s.
+We define state space as $(w_2, w_3, s_2, s_3)$ where $w_2, w_3, s_2, s_3$ are the number of urgent, non-urgent patients in queue and number of urgent, non-urgent patients in service. Then, we will have the following transition:
+\begin{align*}
+    (w_2, w_3, s_2, s_3) &\xrightarrow{p_2\mu} (w_2 + 1, w_3, s_2, s_3) &\quad (s_2 + s_3 = s, w_2 + w_3 < M)\\
+    (w_2, w_3, s_2, s_3) &\xrightarrow{p_3\mu} (w_2, w_3+1, s_2, s_3) &\quad (s_2 + s_3 = s, w_2 + w_3 < M)\\
+    (w_2, w_3, s_2, s_3) &\xrightarrow{s_2\lambda_2} (w_2-1, w_3, s_2, s_3) &\quad (s_2 + s_3 = s, w_2 > 0)\\
+    (w_2, w_3, s_2, s_3) &\xrightarrow{s_3\lambda_3} (w_2-1, w_3, s_2+1, s_3-1) &\quad (s_2 + s_3 = s, w_2 > 0, s_3 > 0)\\
+    (0, w_3, s_2, s_3) &\xrightarrow{s_2\lambda_2} (0, w_3-1, s_2+1, s_3-1) &\quad (s_2 + s_3 = s, w_3 > 0)\\
+    (0, w_3, s_2, s_3) &\xrightarrow{s_3\lambda_3} (0, w_3-1, s_2, s_3) &\quad (s_2 + s_3 = s, w_3 > 0, s_3 > 0)\\
+    (0, 0, s_2, s_3) &\xrightarrow{p_2\mu} (0, 0, s_2 + 1, s_3) &\quad (s_2 + s_3 < s)\\
+    (0, 0, s_2, s_3) &\xrightarrow{p_3\mu} (0, 0, s_2, s_3+1) &\quad (s_2 + s_3 < s)\\
+    (0, 0, s_2, s_3) &\xrightarrow{s_2\lambda_2} (0, 0, s_2-1, s_3)&\quad(s_2 > 0)\\
+    (0, 0, s_2, s_3) &\xrightarrow{s_3\lambda_3} (0, 0, s_2, s_3-1)&\quad(s_3 > 0)\\
+    (w_2, w_3, s_2, s_3) &\xrightarrow{\mu} (w_2, w_3, s_2, s_3)&\quad(w_2 + w_3 = M, s_2 + s_3 = s)
+\end{align*}
+Let $P(w_2,w_3,s_2,s_3)$ denote the state probability.
+Thus, balance equations:\\
+
+\textbf{Interior states} $(s_2+s_3=s,\; w_2>0,\; w_2+w_3<M)$:
+\begin{align*}
+P(w_2,w_3,s_2,s_3)
+\big(
+p_2\mu + p_3\mu + s_2\lambda_2 + s_3\lambda_3
+\big)
+&=
+P(w_2-1,w_3,s_2,s_3)\,p_2\mu
+\\
+&\quad+
+P(w_2,w_3-1,s_2,s_3)\,p_3\mu
+\\
+&\quad+
+P(w_2+1,w_3,s_2,s_3)\,s_2\lambda_2
+\\
+&\quad+
+P(w_2+1,w_3,s_2-1,s_3+1)\,s_3\lambda_3
+\end{align*}
+
+\textbf{Full queue state} $(s_2+s_3=s,\; w_2+w_3=M,\; w_2>0)$:
+\begin{align*}
+P(w_2,w_3,s_2,s_3)
+\big(
+s_2\lambda_2 + s_3\lambda_3
+\big)
+&=
+P(w_2+1,w_3,s_2,s_3)\,s_2\lambda_2
+\\
+&\quad+
+P(w_2+1,w_3,s_2-1,s_3+1)\,s_3\lambda_3
+\end{align*}
+
+\textbf{Priority boundary state} $(s_2+s_3=s,\; w_2=0,\; w_3>0)$:
+\begin{align*}
+P(0,w_3,s_2,s_3)
+\big(
+p_3\mu + s_2\lambda_2 + s_3\lambda_3
+\big)
+&=
+P(0,w_3-1,s_2,s_3)\,p_3\mu
+\\
+&\quad+
+P(1,w_3,s_2,s_3)\,s_2\lambda_2
+\\
+&\quad+
+P(1,w_3,s_2-1,s_3+1)\,s_3\lambda_3
+\end{align*}
+
+\textbf{Empty queue, servers not full} $(w_2 = 0,\; w_3 = 0,\; 0 < s_2 + s_3 < s)$:
+\begin{align*}
+P(0,0,s_2,s_3)
+\big(
+p_2\mu + p_3\mu + s_2\lambda_2 + s_3\lambda_3
+\big)
+&=
+P(0,0,s_2-1,s_3)\,p_2\mu
+\\
+&\quad+
+P(0,0,s_2,s_3-1)\,p_3\mu
+\\
+&\quad+
+P(0,0,s_2+1,s_3)\,s_2\lambda_2
+\\
+&\quad+
+P(0,0,s_2,s_3+1)\,s_3\lambda_3
+\end{align*}
+
+
+\textbf{Empty queue, servers full} $(w_2=w_3=0,\; s_2+s_3=s)$:
+\begin{align*}
+P(0,0,s_2,s_3)
+\big(
+s_2\lambda_2 + s_3\lambda_3
+\big)
+&=
+P(0,0,s_2+1,s_3)\,s_2\lambda_2
+\\
+&\quad+
+P(0,0,s_2,s_3+1)\,s_3\lambda_3
+\end{align*}
+
+Since the system is too big and might be unsolvable, I will approximate the system of double-class system to a single-class system for easier proof. We can approximate the parameters of this system since the arrival rate is moderate compared to the queue capacity and service rate.\\
+
+\textbf{Reduced single-class system}
+
+The expected service time of both urgent and non-urgent patients is:
 \[
-Q_{i,t} = \text{number of level-$i$ patients waiting in queue at time } t,
+\mathbb{E}[S_t]
+\approx
+p_2 \frac{1}{\lambda_2} + p_3 \frac{1}{\lambda_3}
+=
+0.4 \cdot \frac{1}{4.0} + 0.6 \cdot \frac{1}{6.0}
+=
+0.1 + 0.1
+=
+0.2.
+\]
+
+Therefore, the approximate service rate is:
+\[
+\lambda
+=
+\frac{1}{\mathbb{E}[S_t]}
+\approx
+5.
+\]
+
+
+The expected reward of both urgent and non-urgent time:
+\[E[\text{reward}] = 50 * 0.4 + 20 * 0.6 = 32\]
+
+
+Therefore, we reduce the problem to the following single-class:
+\[
+S = s, \qquad
+M = 20, \qquad
+K = S + M = 20 + s,
 \]
 \[
-B_{i,t} = \text{number of level-$i$ patients in service at time } t.
-\]
-
-These satisfy
-\[
-\sum_{i=1}^3Q_{i,t} \le M, 
+\text{arrival rate } \mu = 10,
 \qquad
-\sum_{i=1}^3 B_{i,t} \le S_t.
+\text{service rate } \lambda = 5.
 \]
 
-Thus the state is
+
+Similarly, we define the state space as $w, s$ where
+w is number of patients in queue and s is number of patients in service.
+Denote P(w, s) the stationary distribution of those state. We can see that there are no
+states such that $w > 0$ and $s < \max s$. Therefore, instead of represent $(w, s)$, we can denoted them
+using a single variable n where $n = w + s$. Therefore, we have the condition:
+\[0 \leq n \leq K\]
+
+Then, we obtain the balance equations:\\
+
+\textbf{Interior states} $(1 \le n \le K-1)$:
+\begin{align*}
+\mu P(n-1)
+&=
+\min(n,s)\lambda P(n).
+\end{align*}
+
+\textbf{Boundary states}:
+\begin{align*}
+\mu P(0) &= \lambda P(1), \\
+\mu P(K-1) &= s\,\lambda P(K).
+\end{align*}
+
+We have the relation:
 \[
-X_t = (Q_{1,t},Q_{2,t},Q_{3,t},\, B_{1,t},B_{2,t},B_{3,t},\, S_t).
+P(n)
+=
+\frac{\mu}{\min(n,s)\,\mu_{\text{staff}}} \, P(n-1).
 \]
 
-State transitions are determined by arrivals, service completions, capacity
-limits, and the priority service rule (highest-acuity first).
+\medskip
+
+We solve this recursion by considering two cases.
+
+If $0 \le n \le s$
+
+Since $\min(n,s)=n$, and therefore:
+\[P(n) = \frac{\mu}{n\,\mu_{\text{staff}}} P(n-1)\]
+\[\Rightarrow P(n) = \frac{\mu^n}{n!\,\mu_{\text{staff}}^n} \, P(0),
+\qquad 0 \le n \le s.
+\]
+
+If $s < n \le K$
+
+Since $\min(n,s)=s$, and therefore:
+\[P(n) = \frac{\mu}{s\,\mu_{\text{staff}}} P(n-1)\]
+With Case 1, we also have:
+\[P(n) = \frac{\mu^n}{s!\,s^{\,n-s}\,\mu_{\text{staff}}^n} \, P(0), \qquad s < n \le K\]
+
+Combine this, we have:
+\[P(n)=\begin{cases}
+\dfrac{\mu^n}{n!\,\mu_{\text{staff}}^n} \, P(0), & 0 \le n \le s \\[1em]
+\dfrac{\mu^n}{s!\,s^{\,n-s}\,\mu_{\text{staff}}^n} \, P(0), & s < n \le K
+\end{cases}
+\]
+
+Normalize the sum to 1, we have:
+\[\dfrac{1}{P(0)}=\sum_{n=0}^{s}
+\frac{\mu^n}{n!\,\mu_{\text{staff}}^n}
++\sum_{n=s+1}^{K}
+\frac{\mu^n}{s!\,s^{\,n-s}\,\mu_{\text{staff}}^n}.
+\]
+
+
+The blocking probability is:
+\[P_{\text{block}} = P(K)=\frac{\mu^K}{s!\,s^{\,K-s}\,\mu_{\text{staff}}^K} \, P(0)\]
+
+Then the rate of entering system is:
+\[\mu_{\text{eff}}=\mu \bigl(1 - P_{\text{block}}\bigr)\]
+
+The expected reward with staff level s is:
+\begin{align*}
+    R(s)&=E[\text{reward}] \cdot \mu_{\text{eff}}-c_m \cdot s-c_p \cdot \mu P_{\text{block}}\\
+    &= 32 \cdot \mu \bigl(1 - P_{\text{block}}(s)\bigr)-10s-100 \cdot \mu P_{\text{block}}(s).
+\end{align*}
+Consider s from 1 to 10, we have:
+\[\arg\max_{1 \leq s \leq 10} R(s)= 3\]
+
+\subsubsection*{Greedy Approach}
+The idea of this approach is to dynamically change the number of staff accordingly to the number of patients in the queue. The policy for this is as follow. Let $P_q$ the number of patient in queue.
+\begin{itemize}
+    \item Increase when the queue is likely to be overloaded ($P_q \geq v_o$)
+    \item Decrease when the queue is free ($P_q \leq v_f$)
+\end{itemize}
+The threshold will be chosen to:
+\begin{itemize}
+    \item Minimizing the cost of maintenance ($v_f$)
+    \item Minimizing the penalty of blocking ($v_o$)
+\end{itemize}
+Also, by only increase and decrease the number of staffs when needed, it will also minimize the cost of increasing a staff.
+
+\subsubsection*{Reinforcement Learning Approach}
+
+
 
 \end{document}
